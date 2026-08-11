@@ -1,0 +1,27 @@
+module alu (
+    i_sel : input  common::AluOp    ,
+    i_a   : input  logic        <32>,
+    i_b   : input  logic        <32>,
+    o_y   : output logic        <32>,
+    o_zero: output logic            ,
+) {
+
+    always_comb {
+        case (i_sel) {
+            common::AluOp::ADD : o_y = i_a + i_b; // Addition
+            common::AluOp::SUB : o_y = i_a - i_b; // Subtraction
+            common::AluOp::AND : o_y = i_a & i_b; // And
+            common::AluOp::OR  : o_y = i_a | i_b; // Or
+            common::AluOp::XOR : o_y = i_a ^ i_b; // Xor
+            common::AluOp::SLL : o_y = i_a << i_b[4:0]; // Shift left logical
+            common::AluOp::SRL : o_y = i_a >> i_b[4:0]; // Shift right logical
+            common::AluOp::SRA : o_y = $signed(i_a) >>> i_b[4:0]; // Shift right arithmetic
+            common::AluOp::SLT : o_y = $signed(i_a) <: $signed(i_b); // Set less than
+            common::AluOp::SLTU: o_y = i_a <: i_b; // Set less than for unsigned
+            default            : o_y = 0; // Defaults to y = 0
+        }
+
+        o_zero = !|o_y; // Set zero flag
+    }
+
+}

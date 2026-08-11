@@ -1,0 +1,16 @@
+module pc_register (
+    i_clk    : input  clock    ,
+    i_rst    : input  reset    ,
+    i_we     : input  logic    ,
+    i_pc_next: input  logic<32>,
+    o_pc     : output logic<32>,
+) {
+
+    always_ff {
+        if_reset {
+            o_pc = 32'd0;
+        } else if i_we {
+            o_pc = i_pc_next;
+        }
+    }
+}

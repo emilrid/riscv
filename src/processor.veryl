@@ -1,0 +1,239 @@
+module processor (
+    i_clk: input clock,
+    i_rst: input reset,
+) {
+    var pc_we  : logic            ;
+    var pc_next: logic        <32>;
+    var pc     : logic        <32>;
+    var pc_src : common::PCSrc    ;
+    var alu_y  : logic        <32>;
+    var imm    : logic        <32>;
+
+    var pc_adder_src: common::PCAdderSrc    ;
+    var pc_adder    : logic             <32>;
+
+    always_comb {
+        case pc_adder_src {
+            common::PCAdderSrc::PC_NEXT: pc_adder = pc + 32'd4;
+            common::PCAdderSrc::IMM    : pc_adder = pc + imm;
+            default                    : pc_adder = pc + 32'd4;
+        }
+    }
+
+    always_comb {
+        case pc_src {
+            common::PCSrc::ADDER   : pc_next = pc_adder;
+            common::PCSrc::ALU     : pc_next = alu_y;
+            common::PCSrc::ALU_JALR: pc_next = {alu_y[31:1], 1'b0};
+            default                : pc_next = pc_adder;
+        }
+    }
+
+    inst pc_reg: pc_register (
+        i_clk             ,
+        i_rst             ,
+        i_we     : pc_we  ,
+        i_pc_next: pc_next,
+        o_pc     : pc     ,
+    );
+
+    var saved_mem_addr  : logic          <32>;
+    var saved_load_dest : logic          <5> ;
+    var saved_store_data: logic          <32>;
+    var saved_mem_fmt   : common::WordFmt    ;
+
+    var mem_addr : logic<32>;
+    var mem_wdata: logic<32>;
+    assign mem_wdata = saved_store_data;
+    var mem_fmt  : common::WordFmt    ;
+    var mem_we   : logic              ;
+    var mem_rdata: logic          <32>;
+
+    var mem_addr_src: common::MemAddrSrc;
+    always_comb {
+        case mem_addr_src {
+            common::MemAddrSrc::PC   : mem_addr = pc;
+            common::MemAddrSrc::SAVED: mem_addr = saved_mem_addr;
+            default                  : mem_addr = pc;
+        }
+    }
+
+    inst mem_unit: memory (
+        i_clk                 ,
+        i_addr : mem_addr     ,
+        i_wdata: mem_wdata    ,
+        i_fmt  : saved_mem_fmt,
+        i_we   : mem_we       ,
+        o_rdata: mem_rdata    ,
+    );
+
+    var instr : logic<32>;
+    var opcode: logic<7> ;
+    var funct7: logic<7> ;
+    var funct3: logic<3> ;
+
+    assign instr  = mem_rdata;
+    assign opcode = instr[6:0];
+    assign funct7 = instr[31:25];
+    assign funct3 = instr[14:12];
+
+    var rf_we      : logic                ;
+    var rf_rs1     : logic            <5> ;
+    var rf_rs2     : logic            <5> ;
+    var rf_rd      : logic            <5> ;
+    var rf_wd      : logic            <32>;
+    var rf_rd1     : logic            <32>;
+    var rf_rd2     : logic            <32>;
+    var rf_dest_src: common::RFDestSrc    ;
+    var rf_wd_src  : common::RFDataSrc    ;
+
+    assign rf_rs1 = instr[19:15];
+    assign rf_rs2 = instr[24:20];
+
+    let load_offset   : logic<2>  = saved_mem_addr[1:0];
+    var formatted_load: logic<32>;
+
+    inst load_unit: load_formatter (
+        i_format   : saved_mem_fmt ,
+        i_offset   : load_offset   ,
+        i_raw      : mem_rdata     ,
+        o_formatted: formatted_load,
+    );
+
+    always_comb {
+        case rf_dest_src {
+            common::RFDestSrc::INSTR: {
+                rf_rd = instr[11:7];
+            }
+            common::RFDestSrc::SAVED: {
+                rf_rd = saved_load_dest;
+            }
+            default: {
+                rf_rd = instr[11:7];
+            }
+        }
+    }
+    always_comb {
+        case rf_wd_src {
+            common::RFDataSrc::ALU     : rf_wd = alu_y;
+            common::RFDataSrc::MEM     : rf_wd = formatted_load;
+            common::RFDataSrc::IMM     : rf_wd = imm;
+            common::RFDataSrc::PC_ADDER: rf_wd = pc_adder;
+            default                    : rf_wd = alu_y;
+        }
+    }
+
+    inst reg_file: register_file (
+        i_clk        ,
+        i_rst        ,
+        i_we : rf_we ,
+        i_rs1: rf_rs1,
+        i_rs2: rf_rs2,
+        i_rd : rf_rd ,
+        i_wd : rf_wd ,
+        o_rd1: rf_rd1,
+        o_rd2: rf_rd2,
+    );
+
+    var imm_sel: common::ImmType;
+
+    inst imm_unit: immediate (
+        i_sel  : imm_sel,
+        i_instr: instr  ,
+        o_imm  : imm    ,
+    );
+
+    var alu_sel  : common::AluOp      ;
+    var alu_a    : logic          <32>;
+    var alu_a_src: common::AluASrc    ;
+    var alu_b    : logic          <32>;
+    var alu_b_src: common::AluBSrc    ;
+    var alu_zero : logic              ;
+
+    always_comb {
+        case (alu_a_src) {
+            common::AluASrc::RD1: alu_a = rf_rd1;
+            common::AluASrc::PC : alu_a = pc;
+            default             : alu_a = rf_rd1;
+        }
+    }
+
+    always_comb {
+        case (alu_b_src) {
+            common::AluBSrc::RD2: alu_b = rf_rd2;
+            common::AluBSrc::IMM: alu_b = imm;
+            default             : alu_b = rf_rd2;
+        }
+    }
+
+    inst al_unit: alu (
+        i_sel : alu_sel ,
+        i_a   : alu_a   ,
+        i_b   : alu_b   ,
+        o_y   : alu_y   ,
+        o_zero: alu_zero,
+    );
+
+    var mem_save: logic;
+
+    inst ctrl_unit: control (
+        i_clk                       ,
+        i_rst                       ,
+        i_opcode      : opcode      ,
+        i_funct7      : funct7      ,
+        i_funct3      : funct3      ,
+        i_alu_zero    : alu_zero    ,
+        o_pc_we       : pc_we       ,
+        o_pc_src      : pc_src      ,
+        o_pc_adder_src: pc_adder_src,
+        o_mem_we      : mem_we      ,
+        o_rf_we       : rf_we       ,
+        o_rf_data_src : rf_wd_src   ,
+        o_rf_dest_src : rf_dest_src ,
+        o_alu_sel     : alu_sel     ,
+        o_alu_a_src   : alu_a_src   ,
+        o_alu_b_src   : alu_b_src   ,
+        o_imm_sel     : imm_sel     ,
+        o_mem_addr_src: mem_addr_src,
+        o_mem_save    : mem_save    ,
+        o_mem_fmt     : mem_fmt     ,
+    );
+
+    always_ff {
+        if_reset {
+            saved_mem_addr   = 0;
+            saved_load_dest  = 0;
+            saved_store_data = 0;
+            saved_mem_fmt    = common::WordFmt::WORD;
+        } else if mem_save {
+            saved_mem_addr   = alu_y;
+            saved_load_dest  = rf_rd;
+            saved_store_data = rf_rd2;
+            saved_mem_fmt    = mem_fmt;
+        }
+    }
+
+}
+
+#[test(processor)]
+module test_processor {
+    inst clk: $tb::clock_gen;
+    inst rst: $tb::reset_gen ( clk );
+
+    inst dut: processor (
+        i_clk: clk,
+        i_rst: rst,
+    );
+
+    initial {
+        rst.assert();
+
+        for cycle in 0..200 {
+            clk.next();
+
+            $display("cycle=%d pc=%h instr=%h x31=%h", cycle, dut.pc, dut.instr, dut.reg_file.regs[31]);
+        }
+
+        $finish();
+    }
+}

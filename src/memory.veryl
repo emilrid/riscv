@@ -1,0 +1,51 @@
+module memory #(
+    param ADDR_BITS: u32 = 16,
+) (
+    i_clk  : input  clock              ,
+    i_addr : input  logic          <32>,
+    i_wdata: input  logic          <32>,
+    i_fmt  : input  common::WordFmt    ,
+    i_we   : input  logic              ,
+    o_rdata: output logic          <32>,
+) {
+    var mem: logic<32> [1 << ADDR_BITS];
+
+    initial {
+        $readmemh("program.hex", mem);
+    }
+
+    var word_address: logic<ADDR_BITS>;
+    assign word_address = i_addr[ADDR_BITS + 1:2];
+    assign o_rdata      = mem[word_address];
+
+    always_ff {
+        if (i_we) {
+            case i_fmt {
+                common::WordFmt::BYTE: {
+                    case i_addr[1:0] {
+                        2'b00: mem[word_address][7:0]   = i_wdata[7:0];
+                        2'b01: mem[word_address][15:8]  = i_wdata[7:0];
+                        2'b10: mem[word_address][23:16] = i_wdata[7:0];
+                        2'b11: mem[word_address][31:24] = i_wdata[7:0];
+                    }
+                }
+
+                common::WordFmt::HALF: {
+                    case i_addr[1] {
+                        1'b0: mem[word_address][15:0]  = i_wdata[15:0];
+                        1'b1: mem[word_address][31:16] = i_wdata[15:0];
+                    }
+                }
+
+                common::WordFmt::WORD: {
+                    mem[word_address] = i_wdata;
+                }
+
+                default: {
+                    // BYTE_U and HALF_U are not valid store formats
+                }
+            }
+        }
+    }
+
+}

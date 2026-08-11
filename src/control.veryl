@@ -1,0 +1,279 @@
+module control (
+    i_clk         : input  clock                ,
+    i_rst         : input  reset                ,
+    i_opcode      : input  logic             <7>,
+    i_funct7      : input  logic             <7>,
+    i_funct3      : input  logic             <3>,
+    i_alu_zero    : input  logic                ,
+    o_pc_we       : output logic                ,
+    o_pc_src      : output common::PCSrc        ,
+    o_pc_adder_src: output common::PCAdderSrc   ,
+    o_mem_we      : output logic                ,
+    o_rf_we       : output logic                ,
+    o_rf_data_src : output common::RFDataSrc    ,
+    o_rf_dest_src : output common::RFDestSrc    ,
+    o_alu_sel     : output common::AluOp        ,
+    o_alu_a_src   : output common::AluASrc      ,
+    o_alu_b_src   : output common::AluBSrc      ,
+    o_imm_sel     : output common::ImmType      ,
+    o_mem_addr_src: output common::MemAddrSrc   ,
+    o_mem_save    : output logic                ,
+    o_mem_fmt     : output common::WordFmt      ,
+) {
+    enum State: logic<2> {
+        EXECUTE,
+        LOAD,
+        STORE,
+    }
+    var state     : State;
+    var next_state: State;
+
+    always_comb {
+
+        next_state     = state;
+        o_pc_we        = 1;
+        o_pc_src       = common::PCSrc::ADDER;
+        o_pc_adder_src = common::PCAdderSrc::PC_NEXT;
+        o_mem_we       = 0;
+        o_rf_we        = 0;
+        o_rf_data_src  = common::RFDataSrc::ALU;
+        o_rf_dest_src  = common::RFDestSrc::INSTR;
+        o_alu_sel      = common::AluOp::ADD;
+        o_alu_a_src    = common::AluASrc::RD1;
+        o_alu_b_src    = common::AluBSrc::RD2;
+        o_imm_sel      = common::ImmType::I_TYPE;
+        o_mem_addr_src = common::MemAddrSrc::PC;
+        o_mem_save     = 0;
+        o_mem_fmt      = common::WordFmt::WORD;
+
+        var ill_instr: logic;
+        ill_instr = 0;
+
+        case state {
+            State::EXECUTE: {
+                case i_opcode {
+                    7'b0000011: { // Load
+                        case i_funct3 {
+                            3'b000 : o_mem_fmt = common::WordFmt::BYTE;
+                            3'b001 : o_mem_fmt = common::WordFmt::HALF;
+                            3'b010 : o_mem_fmt = common::WordFmt::WORD;
+                            3'b100 : o_mem_fmt = common::WordFmt::BYTE_U;
+                            3'b101 : o_mem_fmt = common::WordFmt::HALF_U;
+                            default: ill_instr = 1;
+                        }
+
+                        if !ill_instr {
+                            o_alu_sel   = common::AluOp::ADD;
+                            o_alu_b_src = common::AluBSrc::IMM;
+                            o_imm_sel   = common::ImmType::I_TYPE;
+
+                            o_pc_we    = 0;
+                            o_mem_save = 1;
+                            next_state = State::LOAD; // Next state should load
+                        }
+
+                    }
+
+                    7'b0010011: { // Immediates
+                        case i_funct3 {
+                            3'b000: o_alu_sel = common::AluOp::ADD; // ADDI
+                            3'b001: {
+                                if i_funct7 == 7'b0000000 {
+                                    o_alu_sel = common::AluOp::SLL; // SLLI
+                                } else { // funct7 is incorrect otherwise
+                                    ill_instr = 1;
+                                }
+                            }
+                            3'b010: o_alu_sel = common::AluOp::SLT; // SLTI
+                            3'b011: o_alu_sel = common::AluOp::SLTU; // SLTIU
+                            3'b100: o_alu_sel = common::AluOp::XOR; // XORI
+                            3'b101: {
+                                if i_funct7 == 7'b0000000 {
+                                    o_alu_sel = common::AluOp::SRL; // SRLI
+                                } else if i_funct7 == 7'b0100000 {
+                                    o_alu_sel = common::AluOp::SRA; // SRAI
+                                } else {
+                                    ill_instr = 1;
+                                }
+                            }
+                            3'b110: o_alu_sel = common::AluOp::OR; // ORI
+                            3'b111: o_alu_sel = common::AluOp::AND; // ANDI
+                        }
+                        if !ill_instr {
+                            o_imm_sel   = common::ImmType::I_TYPE;
+                            o_alu_b_src = common::AluBSrc::IMM;
+                            o_rf_we     = 1;
+                        }
+
+                    }
+
+                    7'b0010111: { // Add Upper Immediate to PC
+                        if !ill_instr {
+                            o_imm_sel   = common::ImmType::U_TYPE;
+                            o_alu_sel   = common::AluOp::ADD;
+                            o_alu_a_src = common::AluASrc::PC;
+                            o_alu_b_src = common::AluBSrc::IMM;
+                            o_rf_we     = 1;
+                        }
+                    }
+
+                    7'b0100011: { // Store
+                        case i_funct3 {
+                            3'b000 : o_mem_fmt = common::WordFmt::BYTE;
+                            3'b001 : o_mem_fmt = common::WordFmt::HALF;
+                            3'b010 : o_mem_fmt = common::WordFmt::WORD;
+                            default: ill_instr = 1;
+                        }
+
+                        if !ill_instr {
+                            o_alu_sel   = common::AluOp::ADD;
+                            o_alu_b_src = common::AluBSrc::IMM;
+                            o_imm_sel   = common::ImmType::S_TYPE;
+
+                            o_pc_we    = 0;
+                            o_mem_save = 1;
+                            next_state = State::STORE; // Next state should store
+                        }
+                    }
+
+                    7'b0110011: { // Register to register
+                        if i_funct7 == 7'b0000000 {
+                            case i_funct3 {
+                                3'b000: o_alu_sel = common::AluOp::ADD; // ADD
+                                3'b001: o_alu_sel = common::AluOp::SLL; // SLL
+                                3'b010: o_alu_sel = common::AluOp::SLT; // SLT
+                                3'b011: o_alu_sel = common::AluOp::SLTU; // SLTU
+                                3'b100: o_alu_sel = common::AluOp::XOR; // XOR
+                                3'b101: o_alu_sel = common::AluOp::SRL; // SRL
+                                3'b110: o_alu_sel = common::AluOp::OR; // OR
+                                3'b111: o_alu_sel = common::AluOp::AND; // AND
+                            }
+                        } else if i_funct7 == 7'b0100000 {
+                            case i_funct3 {
+                                3'b000 : o_alu_sel = common::AluOp::SUB; // SUB
+                                3'b101 : o_alu_sel = common::AluOp::SRA; // SRA
+                                default: ill_instr = 1;
+                            }
+                        } else {
+                            ill_instr = 1;
+                        }
+
+                        if !ill_instr {
+                            o_alu_b_src = common::AluBSrc::RD2;
+                            o_rf_we     = 1;
+                        }
+                    }
+
+                    7'b0110111: { // Load Upper Immediate
+                        if !ill_instr {
+                            o_imm_sel     = common::ImmType::U_TYPE;
+                            o_rf_data_src = common::RFDataSrc::IMM;
+                            o_rf_we       = 1;
+                        }
+                    }
+
+                    7'b1100011: { // Branches
+                        var take_branch: logic;
+                        take_branch = 0;
+
+                        case i_funct3 {
+                            3'b000: { // BEQ
+                                o_alu_sel   = common::AluOp::SUB;
+                                take_branch = i_alu_zero;
+                            }
+                            3'b001: { // BNE
+                                o_alu_sel   = common::AluOp::SUB;
+                                take_branch = !i_alu_zero;
+                            }
+                            3'b100: { // BLT
+                                o_alu_sel   = common::AluOp::SLT;
+                                take_branch = !i_alu_zero;
+                            }
+                            3'b101: { // BGE
+                                o_alu_sel   = common::AluOp::SLT;
+                                take_branch = i_alu_zero;
+                            }
+                            3'b110: { // BLTU
+                                o_alu_sel   = common::AluOp::SLTU;
+                                take_branch = !i_alu_zero;
+                            }
+                            3'b111: { // BGEU
+                                o_alu_sel   = common::AluOp::SLTU;
+                                take_branch = i_alu_zero;
+                            }
+                            default: ill_instr = 1;
+                        }
+
+                        if !ill_instr {
+                            o_imm_sel   = common::ImmType::B_TYPE;
+                            o_alu_b_src = common::AluBSrc::RD2;
+
+                            if take_branch {
+                                o_pc_adder_src = common::PCAdderSrc::IMM;
+                            }
+                        }
+
+                    }
+
+                    7'b1100111: { // Jump And Link Register
+                        if i_funct3 != 3'b000 {
+                            ill_instr = 1;
+                        }
+                        if !ill_instr {
+                            o_imm_sel     = common::ImmType::I_TYPE;
+                            o_alu_sel     = common::AluOp::ADD;
+                            o_alu_a_src   = common::AluASrc::RD1;
+                            o_alu_b_src   = common::AluBSrc::IMM;
+                            o_pc_src      = common::PCSrc::ALU_JALR;
+                            o_rf_data_src = common::RFDataSrc::PC_ADDER;
+                            o_rf_we       = 1;
+                        }
+                    }
+
+                    7'b1101111: { // Jump And Link
+                        if !ill_instr {
+                            o_imm_sel     = common::ImmType::J_TYPE;
+                            o_alu_sel     = common::AluOp::ADD;
+                            o_alu_a_src   = common::AluASrc::PC;
+                            o_alu_b_src   = common::AluBSrc::IMM;
+                            o_pc_src      = common::PCSrc::ALU;
+                            o_rf_data_src = common::RFDataSrc::PC_ADDER;
+                            o_rf_we       = 1;
+                        }
+                    }
+
+                    default: ill_instr = 1; // If no opcode corresponds
+                }
+            }
+
+            State::LOAD: {
+                o_mem_addr_src = common::MemAddrSrc::SAVED;
+                // Write memory data to the saved destination register
+                o_rf_data_src = common::RFDataSrc::MEM;
+                o_rf_dest_src = common::RFDestSrc::SAVED;
+                o_rf_we       = 1;
+
+                // Preparation for next cycle
+                o_pc_we    = 1;
+                next_state = State::EXECUTE;
+            }
+
+            State::STORE: {
+                o_mem_addr_src = common::MemAddrSrc::SAVED;
+                o_mem_we       = 1;
+
+                // Preparation for next cycle
+                o_pc_we    = 1;
+                next_state = State::EXECUTE;
+            }
+        }
+    }
+    always_ff {
+        if_reset {
+            state = State::EXECUTE;
+        } else {
+            state = next_state;
+
+        }
+    }
+}

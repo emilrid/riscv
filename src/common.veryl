@@ -1,0 +1,70 @@
+package common {
+    enum AluOp: logic<4> {
+        ADD,
+        SUB,
+        AND,
+        OR,
+        XOR,
+        SLL,
+        SRL,
+        SRA,
+        SLT,
+        SLTU,
+    }
+
+    enum AluASrc: logic<2> {
+        RD1,
+        PC,
+        PC_NEXT,
+    }
+
+    enum AluBSrc: logic {
+        RD2,
+        IMM,
+    }
+
+    enum RFDataSrc: logic<2> {
+        ALU,
+        MEM,
+        IMM,
+	PC_ADDER,
+    }
+
+    enum ImmType: logic<3> {
+        I_TYPE,
+        B_TYPE,
+        S_TYPE,
+        U_TYPE,
+        J_TYPE,
+    }
+
+    enum MemAddrSrc: logic {
+        PC,
+        SAVED,
+    }
+
+    enum RFDestSrc: logic {
+        INSTR,
+        SAVED,
+    }
+
+    enum WordFmt: logic<3> {
+        BYTE,
+        HALF,
+        WORD,
+        BYTE_U,
+        HALF_U,
+    }
+
+    enum PCSrc: logic<2> {
+        ADDER,
+        ALU,
+        ALU_JALR,
+    }
+
+    enum PCAdderSrc {
+        PC_NEXT,
+        IMM,
+    }
+
+}

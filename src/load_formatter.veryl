@@ -1,0 +1,41 @@
+// This module is used to format a word into byte, half, signed or unsigned
+module load_formatter (
+    i_format   : input  logic<3> ,
+    i_offset   : input  logic<2> ,
+    i_raw      : input  logic<32>,
+    o_formatted: output logic<32>,
+) {
+
+    var sel_byte: logic          <8> ;
+    var sel_half: logic          <16>;
+
+    always_comb {
+
+        case i_offset {
+            2'b00  : sel_byte = i_raw[7:0];
+            2'b01  : sel_byte = i_raw[15:8];
+            2'b10  : sel_byte = i_raw[23:16];
+            2'b11  : sel_byte = i_raw[31:24];
+            default: sel_byte = i_raw[7:0];
+        }
+        case i_offset[1] {
+            1'b0   : sel_half = i_raw[15:0];
+            1'b1   : sel_half = i_raw[31:16];
+            default: sel_half = i_raw[15:0];
+        }
+
+        case i_format {
+            common::WordFmt::BYTE  : o_formatted = {sel_byte[7] repeat 24, sel_byte[7:0],};
+
+            common::WordFmt::HALF  : o_formatted = {sel_half[15] repeat 16, sel_half[15:0],};
+
+            common::WordFmt::WORD  : o_formatted = i_raw;
+
+            common::WordFmt::BYTE_U: o_formatted = {1'b0 repeat 24, sel_byte[7:0],};
+
+            common::WordFmt::HALF_U: o_formatted = {1'b0 repeat 16, sel_half[15:0],};
+
+            default                : o_formatted = i_raw;
+        }
+    }
+}
