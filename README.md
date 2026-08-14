@@ -6,6 +6,8 @@ Currently it can do all RV32I instructions except for CSR (Control and Status Re
 
 All instructions complete in 1 cycle except Load and Store instructions, which take 2 cycle. This is due to the use of unified memory.
 
+## Diagram
+![Diagram](diagram.drawio.svg)
 ## Instructions
 Install the Veryl toolchain, accessible at https://veryl-lang.org/install/
 
