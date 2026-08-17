@@ -1,0 +1,19 @@
+module register #(
+    param WIDTH: u32          = 32,
+    param RESET: logic<WIDTH> = 0 ,
+) (
+    i_clk  : input  clock    ,
+    i_rst  : input  reset    ,
+    i_we   : input  logic    ,
+    i_next : input  logic<32>,
+    o_value: output logic<32>,
+) {
+
+    always_ff {
+        if_reset {
+            o_value = RESET;
+        } else if i_we {
+            o_value = i_next;
+        }
+    }
+}

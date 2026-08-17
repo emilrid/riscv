@@ -2,16 +2,46 @@ module processor (
     i_clk: input clock,
     i_rst: input reset,
 ) {
-    var pc_we  : logic            ;
-    var pc_next: logic        <32>;
-    var pc     : logic        <32>;
-    var pc_src : common::PCSrc    ;
-    var alu_y  : logic        <32>;
-    var imm    : logic        <32>;
+    var pc_we   : logic    ;
+    var pc_next : logic<32>;
+    var pc      : logic<32>;
+    var pc_adder: logic<32>;
 
-    var pc_adder_src: common::PCAdderSrc    ;
-    var pc_adder    : logic             <32>;
+    var mem_save        : logic              ;
+    var saved_mem_addr  : logic          <32>;
+    var saved_load_dest : logic          <5> ;
+    var saved_store_data: logic          <32>;
+    var saved_mem_fmt   : common::WordFmt    ;
 
+    var mem_we   : logic              ;
+    var mem_addr : logic          <32>;
+    var mem_wdata: logic          <32>;
+    var mem_fmt  : common::WordFmt    ;
+    var mem_rdata: logic          <32>;
+
+    var instr : logic<32>;
+    var opcode: logic<7> ;
+    var funct7: logic<7> ;
+    var funct3: logic<3> ;
+
+    var formatted_load: logic<32>;
+
+    var rf_we : logic    ;
+    var rf_rs1: logic<5> ;
+    var rf_rs2: logic<5> ;
+    var rf_rd : logic<5> ;
+    var rf_wd : logic<32>;
+    var rf_rd1: logic<32>;
+    var rf_rd2: logic<32>;
+
+    var alu_sel : common::AluOp    ;
+    var alu_a   : logic        <32>;
+    var alu_b   : logic        <32>;
+    var alu_zero: logic            ;
+    var alu_y   : logic        <32>;
+    var imm     : logic        <32>;
+
+    var pc_adder_src: common::PCAdderSrc;
     always_comb {
         case pc_adder_src {
             common::PCAdderSrc::PC_NEXT: pc_adder = pc + 32'd4;
@@ -20,6 +50,7 @@ module processor (
         }
     }
 
+    var pc_src: common::PCSrc;
     always_comb {
         case pc_src {
             common::PCSrc::ADDER   : pc_next = pc_adder;
@@ -29,25 +60,51 @@ module processor (
         }
     }
 
-    inst pc_reg: pc_register (
-        i_clk             ,
-        i_rst             ,
-        i_we     : pc_we  ,
-        i_pc_next: pc_next,
-        o_pc     : pc     ,
+    inst pc_reg: register (
+        i_clk           ,
+        i_rst           ,
+        i_we   : pc_we  ,
+        i_next : pc_next,
+        o_value: pc     ,
     );
 
-    var saved_mem_addr  : logic          <32>;
-    var saved_load_dest : logic          <5> ;
-    var saved_store_data: logic          <32>;
-    var saved_mem_fmt   : common::WordFmt    ;
+    inst mem_addr_reg: register (
+        i_clk                  ,
+        i_rst                  ,
+        i_we   : mem_save      ,
+        i_next : alu_y         ,
+        o_value: saved_mem_addr,
+    );
 
-    var mem_addr : logic<32>;
-    var mem_wdata: logic<32>;
+    inst store_data_reg: register (
+        i_clk                    ,
+        i_rst                    ,
+        i_we   : mem_save        ,
+        i_next : rf_rd2          ,
+        o_value: saved_store_data,
+    );
     assign mem_wdata = saved_store_data;
-    var mem_fmt  : common::WordFmt    ;
-    var mem_we   : logic              ;
-    var mem_rdata: logic          <32>;
+
+    inst saved_fmt_reg: register #(
+        WIDTH: 2                    ,
+        RESET: common::WordFmt::WORD,
+    ) (
+        i_clk                 ,
+        i_rst                 ,
+        i_we   : mem_save     ,
+        i_next : mem_fmt      ,
+        o_value: saved_mem_fmt,
+    );
+
+    inst load_dest_reg: register #(
+        WIDTH: 5,
+    ) (
+        i_clk                   ,
+        i_rst                   ,
+        i_we   : mem_save       ,
+        i_next : rf_rd          ,
+        o_value: saved_load_dest,
+    );
 
     var mem_addr_src: common::MemAddrSrc;
     always_comb {
@@ -67,31 +124,16 @@ module processor (
         o_rdata: mem_rdata    ,
     );
 
-    var instr : logic<32>;
-    var opcode: logic<7> ;
-    var funct7: logic<7> ;
-    var funct3: logic<3> ;
-
+    // After getting instruction, split it
     assign instr  = mem_rdata;
     assign opcode = instr[6:0];
     assign funct7 = instr[31:25];
     assign funct3 = instr[14:12];
 
-    var rf_we      : logic                ;
-    var rf_rs1     : logic            <5> ;
-    var rf_rs2     : logic            <5> ;
-    var rf_rd      : logic            <5> ;
-    var rf_wd      : logic            <32>;
-    var rf_rd1     : logic            <32>;
-    var rf_rd2     : logic            <32>;
-    var rf_dest_src: common::RFDestSrc    ;
-    var rf_wd_src  : common::RFDataSrc    ;
-
     assign rf_rs1 = instr[19:15];
     assign rf_rs2 = instr[24:20];
 
-    let load_offset   : logic<2>  = saved_mem_addr[1:0];
-    var formatted_load: logic<32>;
+    let load_offset: logic<2> = saved_mem_addr[1:0];
 
     inst load_unit: load_formatter (
         i_format   : saved_mem_fmt ,
@@ -100,6 +142,7 @@ module processor (
         o_formatted: formatted_load,
     );
 
+    var rf_dest_src: common::RFDestSrc;
     always_comb {
         case rf_dest_src {
             common::RFDestSrc::INSTR: {
@@ -113,6 +156,8 @@ module processor (
             }
         }
     }
+
+    var rf_wd_src: common::RFDataSrc;
     always_comb {
         case rf_wd_src {
             common::RFDataSrc::ALU     : rf_wd = alu_y;
@@ -136,20 +181,13 @@ module processor (
     );
 
     var imm_sel: common::ImmType;
-
     inst imm_unit: immediate (
         i_sel  : imm_sel,
         i_instr: instr  ,
         o_imm  : imm    ,
     );
 
-    var alu_sel  : common::AluOp      ;
-    var alu_a    : logic          <32>;
-    var alu_a_src: common::AluASrc    ;
-    var alu_b    : logic          <32>;
-    var alu_b_src: common::AluBSrc    ;
-    var alu_zero : logic              ;
-
+    var alu_a_src: common::AluASrc;
     always_comb {
         case (alu_a_src) {
             common::AluASrc::RD1: alu_a = rf_rd1;
@@ -158,6 +196,7 @@ module processor (
         }
     }
 
+    var alu_b_src: common::AluBSrc;
     always_comb {
         case (alu_b_src) {
             common::AluBSrc::RD2: alu_b = rf_rd2;
@@ -173,8 +212,6 @@ module processor (
         o_y   : alu_y   ,
         o_zero: alu_zero,
     );
-
-    var mem_save: logic;
 
     inst ctrl_unit: control (
         i_clk                       ,
@@ -198,21 +235,6 @@ module processor (
         o_mem_save    : mem_save    ,
         o_mem_fmt     : mem_fmt     ,
     );
-
-    always_ff {
-        if_reset {
-            saved_mem_addr   = 0;
-            saved_load_dest  = 0;
-            saved_store_data = 0;
-            saved_mem_fmt    = common::WordFmt::WORD;
-        } else if mem_save {
-            saved_mem_addr   = alu_y;
-            saved_load_dest  = rf_rd;
-            saved_store_data = rf_rd2;
-            saved_mem_fmt    = mem_fmt;
-        }
-    }
-
 }
 
 #[test(processor)]
