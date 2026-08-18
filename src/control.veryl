@@ -74,6 +74,12 @@ module control (
 
                     }
 
+                    7'b0001111: { // Fence
+                        if i_funct3 != 3'b000 {
+                            ill_instr = 1;
+                        }
+                    }
+
                     7'b0010011: { // Immediates
                         case i_funct3 {
                             3'b000: o_alu_sel = common::AluOp::ADD; // ADDI
