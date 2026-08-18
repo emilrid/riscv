@@ -157,9 +157,9 @@ module processor (
         }
     }
 
-    var rf_wd_src: common::RFDataSrc;
+    var rf_data_src: common::RFDataSrc;
     always_comb {
-        case rf_wd_src {
+        case rf_data_src {
             common::RFDataSrc::ALU     : rf_wd = alu_y;
             common::RFDataSrc::MEM     : rf_wd = formatted_load;
             common::RFDataSrc::IMM     : rf_wd = imm;
@@ -225,7 +225,7 @@ module processor (
         o_pc_adder_src: pc_adder_src,
         o_mem_we      : mem_we      ,
         o_rf_we       : rf_we       ,
-        o_rf_data_src : rf_wd_src   ,
+        o_rf_data_src : rf_data_src   ,
         o_rf_dest_src : rf_dest_src ,
         o_alu_sel     : alu_sel     ,
         o_alu_a_src   : alu_a_src   ,
