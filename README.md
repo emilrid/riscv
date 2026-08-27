@@ -1,8 +1,8 @@
 # RISC-V processor
 
-Written in Veryl, this processor is a mostly single cycle RV32I processor with unified memory and efficient component usage. 
+Written in Veryl, this processor is a mostly single cycle RV32I_Zicsr processor with unified memory and efficient component usage. 
 
-Currently it can do all RV32I instructions except for CSR (Control and Status Register) instructions, which are planned to be implemented.
+Currently it can do all RV32I instructions except for *all* CSR (Control and Status Register) instructions.
 
 All instructions complete in 1 cycle except Load and Store instructions, which take 2 cycle. This is due to the use of unified memory.
 
