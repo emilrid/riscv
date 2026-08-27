@@ -23,11 +23,12 @@ package common {
         IMM,
     }
 
-    enum RFDataSrc: logic<2> {
+    enum RFDataSrc: logic<3> {
         ALU,
         MEM,
         IMM,
-	PC_ADDER,
+        PC_ADDER,
+        CSR,
     }
 
     enum ImmType: logic<3> {
@@ -60,6 +61,7 @@ package common {
         ADDER,
         ALU,
         ALU_JALR,
+        MTVEC,
     }
 
     enum PCAdderSrc {

@@ -1,24 +1,28 @@
 module control (
-    i_clk         : input  clock                ,
-    i_rst         : input  reset                ,
-    i_opcode      : input  logic             <7>,
-    i_funct7      : input  logic             <7>,
-    i_funct3      : input  logic             <3>,
-    i_alu_zero    : input  logic                ,
-    o_pc_we       : output logic                ,
-    o_pc_src      : output common::PCSrc        ,
-    o_pc_adder_src: output common::PCAdderSrc   ,
-    o_mem_we      : output logic                ,
-    o_rf_we       : output logic                ,
-    o_rf_data_src : output common::RFDataSrc    ,
-    o_rf_dest_src : output common::RFDestSrc    ,
-    o_alu_sel     : output common::AluOp        ,
-    o_alu_a_src   : output common::AluASrc      ,
-    o_alu_b_src   : output common::AluBSrc      ,
-    o_imm_sel     : output common::ImmType      ,
-    o_mem_addr_src: output common::MemAddrSrc   ,
-    o_mem_save    : output logic                ,
-    o_mem_fmt     : output common::WordFmt      ,
+    i_clk         : input  clock                 ,
+    i_rst         : input  reset                 ,
+    i_opcode      : input  logic             <7> ,
+    i_funct7      : input  logic             <7> ,
+    i_funct3      : input  logic             <3> ,
+    i_imm12       : input  logic             <12>,
+    i_alu_zero    : input  logic                 ,
+    o_pc_we       : output logic                 ,
+    o_pc_src      : output common::PCSrc         ,
+    o_pc_adder_src: output common::PCAdderSrc    ,
+    o_mem_we      : output logic                 ,
+    o_rf_we       : output logic                 ,
+    o_rf_data_src : output common::RFDataSrc     ,
+    o_rf_dest_src : output common::RFDestSrc     ,
+    o_alu_sel     : output common::AluOp         ,
+    o_alu_a_src   : output common::AluASrc       ,
+    o_alu_b_src   : output common::AluBSrc       ,
+    o_imm_sel     : output common::ImmType       ,
+    o_mem_addr_src: output common::MemAddrSrc    ,
+    o_mem_save    : output logic                 ,
+    o_mem_fmt     : output common::WordFmt       ,
+    o_trap        : output logic                 ,
+    o_mcause_next : output logic             <32>,
+    o_csr_we      : output logic                 ,
 ) {
     enum State: logic<2> {
         EXECUTE,
@@ -45,6 +49,9 @@ module control (
         o_mem_addr_src = common::MemAddrSrc::PC;
         o_mem_save     = 0;
         o_mem_fmt      = common::WordFmt::WORD;
+        o_trap         = 0;
+        o_mcause_next  = 0;
+        o_csr_we       = 0;
 
         var ill_instr: logic;
         ill_instr = 0;
@@ -246,6 +253,29 @@ module control (
                             o_rf_data_src = common::RFDataSrc::PC_ADDER;
                             o_rf_we       = 1;
                         }
+                    }
+
+                    7'b1110011: { // System
+                        case i_funct3 {
+                            3'b000: {
+                                case i_imm12 {
+                                    12'h000: o_mcause_next = 11; // ECALL
+                                    12'h001: o_mcause_next = 3; // EBREAK
+                                    default: ill_instr     = 1;
+                                }
+                                if !ill_instr {
+                                    o_pc_src = common::PCSrc::MTVEC;
+                                    o_trap   = 1;
+                                }
+                            }
+                            3'b001: {
+                                o_csr_we      = 1;
+                                o_rf_data_src = common::RFDataSrc::CSR;
+                                o_rf_we       = 1;
+                            }
+                            default: ill_instr = 1;
+                        }
+
                     }
 
                     default: ill_instr = 1; // If no opcode corresponds

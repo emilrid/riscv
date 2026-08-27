@@ -1,0 +1,71 @@
+module csr (
+    i_clk        : input  clock    ,
+    i_rst        : input  reset    ,
+    i_we         : input  logic    ,
+    i_trap       : input  logic    ,
+    i_pc         : input  logic<32>,
+    i_mcause_next: input  logic<32>,
+    i_addr       : input  logic<12>,
+    i_wdata      : input  logic<32>,
+    o_rdata      : output logic<32>,
+    o_mtvec      : output logic<32>,
+) {
+
+    var mepc_we  : logic    ;
+    var mepc_next: logic<32>; // Needed for MUXing control unit or wdata
+    var mepc     : logic<32>;
+
+    var mcause_we  : logic    ;
+    var mcause_next: logic<32>; // Needed for MUXing control unit or wdata
+    var mcause     : logic<32>;
+
+    var mtvec_we: logic    ;
+    var mtvec   : logic<32>;
+
+    inst mepc_reg: register (
+        i_clk             ,
+        i_rst             ,
+        i_we   : mepc_we  ,
+        i_next : mepc_next,
+        o_value: mepc     ,
+    );
+
+    inst mcause_reg: register (
+        i_clk               ,
+        i_rst               ,
+        i_we   : mcause_we  ,
+        i_next : mcause_next,
+        o_value: mcause     ,
+    );
+
+    inst mtvec_reg: register (
+        i_clk            ,
+        i_rst            ,
+        i_we   : mtvec_we,
+        i_next : i_wdata ,
+        o_value: mtvec   ,
+    );
+
+    assign o_mtvec = mtvec;
+
+    always_comb {
+        // Trap is prioritized over CSR write
+        mepc_we   = i_trap || (i_we && i_addr == 12'h341);
+        mcause_we = i_trap || (i_we && i_addr == 12'h342);
+
+        // Trap MUXes register inputs
+        mepc_next   = if i_trap ? i_pc : i_wdata;
+        mcause_next = if i_trap ? i_mcause_next : i_wdata;
+
+        mtvec_we = i_we && i_addr == 12'h305;
+
+        // Read
+        case i_addr {
+            12'h305: o_rdata = mtvec; // mtvec
+            12'h341: o_rdata = mepc; // mepc
+            12'h342: o_rdata = mcause; // mcause
+            default: o_rdata = 0;
+        }
+
+    }
+}

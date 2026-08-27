@@ -19,10 +19,11 @@ module processor (
     var mem_fmt  : common::WordFmt    ;
     var mem_rdata: logic          <32>;
 
-    var instr : logic<32>;
-    var opcode: logic<7> ;
-    var funct7: logic<7> ;
-    var funct3: logic<3> ;
+    var instr       : logic<32>;
+    var opcode      : logic<7> ;
+    var funct7      : logic<7> ;
+    var funct3      : logic<3> ;
+    var i_type_imm12: logic<12>;
 
     var formatted_load: logic<32>;
 
@@ -34,12 +35,19 @@ module processor (
     var rf_rd1: logic<32>;
     var rf_rd2: logic<32>;
 
+    var trap       : logic    ;
+    var csr_we     : logic    ;
+    var mcause_next: logic<32>;
+    var mtvec      : logic<32>;
+    var csr_rdata  : logic<32>;
+
+    var imm: logic<32>;
+
     var alu_sel : common::AluOp    ;
     var alu_a   : logic        <32>;
     var alu_b   : logic        <32>;
     var alu_zero: logic            ;
     var alu_y   : logic        <32>;
-    var imm     : logic        <32>;
 
     var pc_adder_src: common::PCAdderSrc;
     always_comb {
@@ -56,6 +64,7 @@ module processor (
             common::PCSrc::ADDER   : pc_next = pc_adder;
             common::PCSrc::ALU     : pc_next = alu_y;
             common::PCSrc::ALU_JALR: pc_next = {alu_y[31:1], 1'b0};
+            common::PCSrc::MTVEC   : pc_next = mtvec;
             default                : pc_next = pc_adder;
         }
     }
@@ -125,10 +134,11 @@ module processor (
     );
 
     // After getting instruction, split it
-    assign instr  = mem_rdata;
-    assign opcode = instr[6:0];
-    assign funct7 = instr[31:25];
-    assign funct3 = instr[14:12];
+    assign instr        = mem_rdata;
+    assign opcode       = instr[6:0];
+    assign funct7       = instr[31:25];
+    assign funct3       = instr[14:12];
+    assign i_type_imm12 = instr[31:20];
 
     assign rf_rs1 = instr[19:15];
     assign rf_rs2 = instr[24:20];
@@ -164,6 +174,7 @@ module processor (
             common::RFDataSrc::MEM     : rf_wd = formatted_load;
             common::RFDataSrc::IMM     : rf_wd = imm;
             common::RFDataSrc::PC_ADDER: rf_wd = pc_adder;
+            common::RFDataSrc::CSR     : rf_wd = csr_rdata;
             default                    : rf_wd = alu_y;
         }
     }
@@ -178,6 +189,19 @@ module processor (
         i_wd : rf_wd ,
         o_rd1: rf_rd1,
         o_rd2: rf_rd2,
+    );
+
+    inst csr_unit: csr (
+        i_clk                      ,
+        i_rst                      ,
+        i_we         : csr_we      ,
+        i_trap       : trap        ,
+        i_pc         : pc          ,
+        i_mcause_next: mcause_next ,
+        i_addr       : i_type_imm12,
+        i_wdata      : rf_rd1      ,
+        o_rdata      : csr_rdata   ,
+        o_mtvec      : mtvec       ,
     );
 
     var imm_sel: common::ImmType;
@@ -219,13 +243,14 @@ module processor (
         i_opcode      : opcode      ,
         i_funct7      : funct7      ,
         i_funct3      : funct3      ,
+        i_imm12       : i_type_imm12,
         i_alu_zero    : alu_zero    ,
         o_pc_we       : pc_we       ,
         o_pc_src      : pc_src      ,
         o_pc_adder_src: pc_adder_src,
         o_mem_we      : mem_we      ,
         o_rf_we       : rf_we       ,
-        o_rf_data_src : rf_data_src   ,
+        o_rf_data_src : rf_data_src ,
         o_rf_dest_src : rf_dest_src ,
         o_alu_sel     : alu_sel     ,
         o_alu_a_src   : alu_a_src   ,
@@ -234,6 +259,9 @@ module processor (
         o_mem_addr_src: mem_addr_src,
         o_mem_save    : mem_save    ,
         o_mem_fmt     : mem_fmt     ,
+        o_trap        : trap        ,
+        o_mcause_next : mcause_next ,
+        o_csr_we      : csr_we      ,
     );
 }
 
