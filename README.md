@@ -2,7 +2,10 @@
 
 Written in Veryl, this processor is a mostly single cycle RV32I_Zicsr processor with unified memory and efficient component usage. 
 
-Currently it can do all RV32I instructions except for *all* CSR (Control and Status Register) instructions.
+CSRs include
+* mepc
+* mcause
+* mtvec
 
 All instructions complete in 1 cycle except Load and Store instructions, which take 2 cycle. This is due to the use of unified memory.
 
@@ -12,9 +15,8 @@ All instructions complete in 1 cycle except Load and Store instructions, which t
 Install the Veryl toolchain, accessible at https://veryl-lang.org/install/
 
 1. Build: `veryl build`
+2. Make : `make` (assembles program)
 2. Test : `veryl test`
 
-This will run the current simple program `program.S` (vibed together) which I've previously compiled to `program.hex` which the program inserts into memory at compilation. 
-The program runs checks on the implemented instructions and returns 0 in register `x31` if the test is completed successfully. 
-
-This is a preliminary test and thorough test are planned to be implemented. 
+Program.S is a small program that checks CSR instructions. 
+This is a preliminary test and thorough tests are planned to be implemented. 
