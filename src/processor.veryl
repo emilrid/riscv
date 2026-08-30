@@ -35,11 +35,16 @@ module processor (
     var rf_rd1: logic<32>;
     var rf_rd2: logic<32>;
 
-    var trap       : logic    ;
-    var csr_we     : logic    ;
-    var mcause_next: logic<32>;
-    var mtvec      : logic<32>;
-    var csr_rdata  : logic<32>;
+    var rs1_uimm_zero: logic;
+
+    var trap       : logic            ;
+    var csr_we     : logic            ;
+    var csr_op     : common::CsrOp    ;
+    var mcause_next: logic        <32>;
+    var csr_wdata  : logic        <32>;
+    var csr_rdata  : logic        <32>;
+    var mtvec      : logic        <32>;
+    var mepc       : logic        <32>;
 
     var imm: logic<32>;
 
@@ -65,6 +70,7 @@ module processor (
             common::PCSrc::ALU     : pc_next = alu_y;
             common::PCSrc::ALU_JALR: pc_next = {alu_y[31:1], 1'b0};
             common::PCSrc::MTVEC   : pc_next = mtvec;
+            common::PCSrc::MEPC    : pc_next = mepc;
             default                : pc_next = pc_adder;
         }
     }
@@ -143,6 +149,8 @@ module processor (
     assign rf_rs1 = instr[19:15];
     assign rf_rs2 = instr[24:20];
 
+    assign rs1_uimm_zero = rf_rs1 == 5'd0;
+
     let load_offset: logic<2> = saved_mem_addr[1:0];
 
     inst load_unit: load_formatter (
@@ -191,17 +199,28 @@ module processor (
         o_rd2: rf_rd2,
     );
 
+    var csr_data_src: common::CsrDataSrc;
+    always_comb {
+        case csr_data_src {
+            common::CsrDataSrc::RD1: csr_wdata = rf_rd1;
+            common::CsrDataSrc::IMM: csr_wdata = imm;
+            default                : csr_wdata = rf_rd1;
+        }
+    }
+
     inst csr_unit: csr (
         i_clk                      ,
         i_rst                      ,
         i_we         : csr_we      ,
+        i_op         : csr_op      ,
         i_trap       : trap        ,
         i_pc         : pc          ,
         i_mcause_next: mcause_next ,
         i_addr       : i_type_imm12,
-        i_wdata      : rf_rd1      ,
+        i_wdata      : csr_wdata   ,
         o_rdata      : csr_rdata   ,
         o_mtvec      : mtvec       ,
+        o_mepc       : mepc        ,
     );
 
     var imm_sel: common::ImmType;
@@ -238,30 +257,33 @@ module processor (
     );
 
     inst ctrl_unit: control (
-        i_clk                       ,
-        i_rst                       ,
-        i_opcode      : opcode      ,
-        i_funct7      : funct7      ,
-        i_funct3      : funct3      ,
-        i_imm12       : i_type_imm12,
-        i_alu_zero    : alu_zero    ,
-        o_pc_we       : pc_we       ,
-        o_pc_src      : pc_src      ,
-        o_pc_adder_src: pc_adder_src,
-        o_mem_we      : mem_we      ,
-        o_rf_we       : rf_we       ,
-        o_rf_data_src : rf_data_src ,
-        o_rf_dest_src : rf_dest_src ,
-        o_alu_sel     : alu_sel     ,
-        o_alu_a_src   : alu_a_src   ,
-        o_alu_b_src   : alu_b_src   ,
-        o_imm_sel     : imm_sel     ,
-        o_mem_addr_src: mem_addr_src,
-        o_mem_save    : mem_save    ,
-        o_mem_fmt     : mem_fmt     ,
-        o_trap        : trap        ,
-        o_mcause_next : mcause_next ,
-        o_csr_we      : csr_we      ,
+        i_clk                         ,
+        i_rst                         ,
+        i_opcode       : opcode       ,
+        i_funct7       : funct7       ,
+        i_funct3       : funct3       ,
+        i_imm12        : i_type_imm12 ,
+        i_alu_zero     : alu_zero     ,
+        i_rs1_uimm_zero: rs1_uimm_zero,
+        o_pc_we        : pc_we        ,
+        o_pc_src       : pc_src       ,
+        o_pc_adder_src : pc_adder_src ,
+        o_mem_we       : mem_we       ,
+        o_rf_we        : rf_we        ,
+        o_rf_data_src  : rf_data_src  ,
+        o_rf_dest_src  : rf_dest_src  ,
+        o_alu_sel      : alu_sel      ,
+        o_alu_a_src    : alu_a_src    ,
+        o_alu_b_src    : alu_b_src    ,
+        o_imm_sel      : imm_sel      ,
+        o_mem_addr_src : mem_addr_src ,
+        o_mem_save     : mem_save     ,
+        o_mem_fmt      : mem_fmt      ,
+        o_trap         : trap         ,
+        o_mcause_next  : mcause_next  ,
+        o_csr_we       : csr_we       ,
+        o_csr_op       : csr_op       ,
+        o_csr_data_src : csr_data_src ,
     );
 }
 

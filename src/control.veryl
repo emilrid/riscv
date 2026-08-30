@@ -1,28 +1,31 @@
 module control (
-    i_clk         : input  clock                 ,
-    i_rst         : input  reset                 ,
-    i_opcode      : input  logic             <7> ,
-    i_funct7      : input  logic             <7> ,
-    i_funct3      : input  logic             <3> ,
-    i_imm12       : input  logic             <12>,
-    i_alu_zero    : input  logic                 ,
-    o_pc_we       : output logic                 ,
-    o_pc_src      : output common::PCSrc         ,
-    o_pc_adder_src: output common::PCAdderSrc    ,
-    o_mem_we      : output logic                 ,
-    o_rf_we       : output logic                 ,
-    o_rf_data_src : output common::RFDataSrc     ,
-    o_rf_dest_src : output common::RFDestSrc     ,
-    o_alu_sel     : output common::AluOp         ,
-    o_alu_a_src   : output common::AluASrc       ,
-    o_alu_b_src   : output common::AluBSrc       ,
-    o_imm_sel     : output common::ImmType       ,
-    o_mem_addr_src: output common::MemAddrSrc    ,
-    o_mem_save    : output logic                 ,
-    o_mem_fmt     : output common::WordFmt       ,
-    o_trap        : output logic                 ,
-    o_mcause_next : output logic             <32>,
-    o_csr_we      : output logic                 ,
+    i_clk          : input  clock                 ,
+    i_rst          : input  reset                 ,
+    i_opcode       : input  logic             <7> ,
+    i_funct7       : input  logic             <7> ,
+    i_funct3       : input  logic             <3> ,
+    i_imm12        : input  logic             <12>,
+    i_alu_zero     : input  logic                 ,
+    i_rs1_uimm_zero: input  logic                 ,
+    o_pc_we        : output logic                 ,
+    o_pc_src       : output common::PCSrc         ,
+    o_pc_adder_src : output common::PCAdderSrc    ,
+    o_mem_we       : output logic                 ,
+    o_rf_we        : output logic                 ,
+    o_rf_data_src  : output common::RFDataSrc     ,
+    o_rf_dest_src  : output common::RFDestSrc     ,
+    o_alu_sel      : output common::AluOp         ,
+    o_alu_a_src    : output common::AluASrc       ,
+    o_alu_b_src    : output common::AluBSrc       ,
+    o_imm_sel      : output common::ImmType       ,
+    o_mem_addr_src : output common::MemAddrSrc    ,
+    o_mem_save     : output logic                 ,
+    o_mem_fmt      : output common::WordFmt       ,
+    o_trap         : output logic                 ,
+    o_mcause_next  : output logic             <32>,
+    o_csr_we       : output logic                 ,
+    o_csr_op       : output common::CsrOp         ,
+    o_csr_data_src : output common::CsrDataSrc    ,
 ) {
     enum State: logic<2> {
         EXECUTE,
@@ -52,6 +55,8 @@ module control (
         o_trap         = 0;
         o_mcause_next  = 0;
         o_csr_we       = 0;
+        o_csr_op       = common::CsrOp::WRITE;
+        o_csr_data_src = common::CsrDataSrc::RD1;
 
         var ill_instr: logic;
         ill_instr = 0;
@@ -109,8 +114,9 @@ module control (
                                     ill_instr = 1;
                                 }
                             }
-                            3'b110: o_alu_sel = common::AluOp::OR; // ORI
-                            3'b111: o_alu_sel = common::AluOp::AND; // ANDI
+                            3'b110 : o_alu_sel = common::AluOp::OR; // ORI
+                            3'b111 : o_alu_sel = common::AluOp::AND; // ANDI
+                            default: o_alu_sel = common::AluOp::ADD; // ADDI
                         }
                         if !ill_instr {
                             o_imm_sel   = common::ImmType::I_TYPE;
@@ -259,26 +265,76 @@ module control (
                         case i_funct3 {
                             3'b000: {
                                 case i_imm12 {
-                                    12'h000: o_mcause_next = 11; // ECALL
-                                    12'h001: o_mcause_next = 3; // EBREAK
-                                    default: ill_instr     = 1;
-                                }
-                                if !ill_instr {
-                                    o_pc_src = common::PCSrc::MTVEC;
-                                    o_trap   = 1;
+                                    12'h000: { // ECALL
+                                        o_mcause_next = 11;
+                                        o_pc_src      = common::PCSrc::MTVEC;
+                                        o_trap        = 1;
+
+                                    }
+                                    12'h001: { // EBREAK
+                                        o_mcause_next = 3;
+                                        o_pc_src      = common::PCSrc::MTVEC;
+                                        o_trap        = 1;
+                                    }
+                                    12'h302: o_pc_src  = common::PCSrc::MEPC;
+                                    default: ill_instr = 1;
                                 }
                             }
-                            3'b001: {
-                                o_csr_we      = 1;
-                                o_rf_data_src = common::RFDataSrc::CSR;
-                                o_rf_we       = 1;
+                            3'b001: { // WRITE
+                                o_csr_we       = 1;
+                                o_csr_op       = common::CsrOp::WRITE;
+                                o_csr_data_src = common::CsrDataSrc::RD1;
+                                o_rf_data_src  = common::RFDataSrc::CSR;
+                                o_rf_we        = 1;
+                            }
+                            3'b010: { // SET
+                                o_csr_we       = !i_rs1_uimm_zero;
+                                o_csr_op       = common::CsrOp::SET;
+                                o_csr_data_src = common::CsrDataSrc::RD1;
+                                o_rf_data_src  = common::RFDataSrc::CSR;
+                                o_rf_we        = 1;
+                            }
+                            3'b011: { // CLEAR
+                                o_csr_we       = !i_rs1_uimm_zero;
+                                o_csr_op       = common::CsrOp::CLEAR;
+                                o_csr_data_src = common::CsrDataSrc::RD1;
+                                o_rf_data_src  = common::RFDataSrc::CSR;
+                                o_rf_we        = 1;
+                            }
+                            3'b101: { // WRITE IMM
+                                o_csr_we       = 1;
+                                o_csr_op       = common::CsrOp::WRITE;
+                                o_csr_data_src = common::CsrDataSrc::IMM;
+                                o_imm_sel      = common::ImmType::CSR_TYPE;
+                                o_rf_data_src  = common::RFDataSrc::CSR;
+                                o_rf_we        = 1;
+                            }
+                            3'b110: { // SET IMM
+                                o_csr_we       = !i_rs1_uimm_zero;
+                                o_csr_op       = common::CsrOp::SET;
+                                o_csr_data_src = common::CsrDataSrc::IMM;
+                                o_imm_sel      = common::ImmType::CSR_TYPE;
+                                o_rf_data_src  = common::RFDataSrc::CSR;
+                                o_rf_we        = 1;
+                            }
+                            3'b111: { // CLEAR IMM
+                                o_csr_we       = !i_rs1_uimm_zero;
+                                o_csr_op       = common::CsrOp::CLEAR;
+                                o_csr_data_src = common::CsrDataSrc::IMM;
+                                o_imm_sel      = common::ImmType::CSR_TYPE;
+                                o_rf_data_src  = common::RFDataSrc::CSR;
+                                o_rf_we        = 1;
                             }
                             default: ill_instr = 1;
                         }
-
                     }
 
                     default: ill_instr = 1; // If no opcode corresponds
+                }
+                if ill_instr {
+                    o_mcause_next = 2;
+                    o_pc_src      = common::PCSrc::MTVEC;
+                    o_trap        = 1;
                 }
             }
 

@@ -37,6 +37,7 @@ package common {
         S_TYPE,
         U_TYPE,
         J_TYPE,
+        CSR_TYPE,
     }
 
     enum MemAddrSrc: logic {
@@ -57,16 +58,27 @@ package common {
         HALF_U,
     }
 
-    enum PCSrc: logic<2> {
+    enum PCSrc: logic<3> {
         ADDER,
         ALU,
         ALU_JALR,
         MTVEC,
+	MEPC,
     }
 
-    enum PCAdderSrc {
+    enum PCAdderSrc: logic {
         PC_NEXT,
         IMM,
     }
 
+    enum CsrOp: logic<2> {
+        WRITE,
+        SET,
+        CLEAR,
+    }
+
+    enum CsrDataSrc: logic {
+        RD1,
+        IMM,
+    }
 }
